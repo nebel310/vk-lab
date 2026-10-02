@@ -1,0 +1,108 @@
+services:
+  minio:
+    image: pgsty/silo:latest
+    container_name: lakehouse-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
+  minio-init:
+    image: pgsty/mc:latest
+    depends_on:
+      - minio
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for i in $(seq 1 30); do
+          mc alias set m http://minio:9000 minioadmin minioadmin >/dev/null 2>&1 && break
+          echo "waiting for minio... ($i)"; sleep 2
+        done
+        mc mb --ignore-existing m/warehouse
+        echo "minio-init: bucket 'warehouse' ready"
+
+  postgres:
+    image: postgres:17
+    container_name: lakehouse-pg
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  lakekeeper-migrate:
+    image: quay.io/lakekeeper/catalog:latest-main
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      LAKEKEEPER__PG_ENCRYPTION_KEY: "This-is-NOT-Secure!"
+      LAKEKEEPER__PG_DATABASE_URL_READ: "postgresql://postgres:postgres@postgres:5432/postgres"
+      LAKEKEEPER__PG_DATABASE_URL_WRITE: "postgresql://postgres:postgres@postgres:5432/postgres"
+    command: migrate
+
+  lakekeeper:
+    image: quay.io/lakekeeper/catalog:latest-main
+    container_name: lakekeeper
+    depends_on:
+      lakekeeper-migrate:
+        condition: service_completed_successfully
+    environment:
+      LAKEKEEPER__PG_ENCRYPTION_KEY: "This-is-NOT-Secure!"
+      LAKEKEEPER__PG_DATABASE_URL_READ: "postgresql://postgres:postgres@postgres:5432/postgres"
+      LAKEKEEPER__PG_DATABASE_URL_WRITE: "postgresql://postgres:postgres@postgres:5432/postgres"
+    ports:
+      - "8181:8181"
+    command: serve
+    restart: unless-stopped
+
+  lakekeeper-init:
+    image: curlimages/curl:latest
+    depends_on:
+      - lakekeeper
+      - minio-init
+    restart: "no"
+    volumes:
+      - ./create-warehouse.json:/create-warehouse.json:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for i in $(seq 1 60); do
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://lakekeeper:8181/health || echo 000)
+          [ "$code" = "200" ] && break
+          echo "waiting for lakekeeper... ($i, code=$code)"; sleep 2
+        done
+        curl -sS -X POST http://lakekeeper:8181/management/v1/bootstrap -H "Content-Type: application/json" -d '{"accept-terms-of-use": true}' || true
+        curl -sS -X POST http://lakekeeper:8181/management/v1/warehouse -H "Content-Type: application/json" -d @/create-warehouse.json || true
+        echo "lakekeeper-init: done"
+
+  trino:
+    image: trinodb/trino:476
+    container_name: trino
+    depends_on:
+      lakekeeper-init:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./catalog:/etc/trino/catalog
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+  pg-data:
