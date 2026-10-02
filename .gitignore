@@ -1,0 +1,80 @@
+# ============ Python ============
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
+.ipynb_checkpoints/
+*.egg-info/
+.eggs/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+uv.lock
+
+# ============ Jupyter ============
+*.ipynb_checkpoints/
+.ipynb_checkpoints/
+jupyter_config.json
+
+# ============ Данные и результаты (большие файлы) ============
+*.parquet
+*.orc
+*.avro
+*.csv
+!example*.csv
+*.tsv
+*.json.gz
+*.zst
+lakehouse/bench/
+lakehouse/spark_jobs/__pycache__/
+result_lakehouse.csv
+result_local_bench.csv
+minio-data/
+pg-data/
+
+# ============ Docker ============
+# docker-compose.yml и Dockerfile — коммитим, они нужны для воспроизводимости
+# но не коммитим секреты и локальные оверрайды
+docker-compose.override.yml
+.env
+.env.local
+*.env
+!*.env.example
+
+# ============ IDE / редакторы ============
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ============ Логи ============
+*.log
+logs/
+npm-debug.log*
+
+# ============ Временные файлы ============
+tmp/
+temp/
+*.tmp
+*.bak
+
+# ============ uv ============
+# .venv/ уже выше
+# uv.lock — оставляем, это аналог requirements lock
+# если НЕ хочешь коммитить lock — раскомментируй:
+# uv.lock
