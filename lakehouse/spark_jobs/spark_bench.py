@@ -1,5 +1,6 @@
 import time
 from pyspark.sql import SparkSession, functions as F
+from pyspark import StorageLevel
 
 spark = (SparkSession.builder
     .appName("lakehouse-bench")
@@ -34,8 +35,8 @@ def dir_size(p):
     return cs.getLength(), cs.getFileCount()
 
 # ---------- данные ----------
-print("=== Генерация датасета (~2.88M строк) ===")
-N = 2_880_404
+print("=== Генерация датасета (15M строк) ===")
+N = 15_000_000
 t0 = time.perf_counter()
 df = (spark.range(0, N)
     .withColumn("ss_item_sk",         (F.col("id") % 18000).cast("long"))
@@ -50,7 +51,7 @@ df = (spark.range(0, N)
     .withColumn("ss_net_profit",      F.round(F.rand(6) * 5000, 2))
     .drop("id")
 )
-df.cache()
+df.persist(StorageLevel.MEMORY_AND_DISK)
 print(f"rows = {df.count()}, gen = {time.perf_counter()-t0:.1f}s")
 
 # ---------- запись ----------
@@ -58,11 +59,9 @@ BENCH = [
     ("parquet", "snappy"),
     ("parquet", "zstd"),
     ("parquet", "gzip"),
-    ("parquet", "none"),
     ("orc",     "snappy"),
     ("orc",     "zstd"),
     ("orc",     "zlib"),
-    ("orc",     "none"),
 ]
 
 print("\n=== Запись ===")
@@ -80,7 +79,7 @@ for fmt, codec in BENCH:
     write_results[(fmt, codec)] = (size, files, wt)
     print(f"  {fmt:7s} {codec:7s}  size={size/1e6:8.2f} MB  files={files}  write={wt:.2f}s")
 
-# ---------- агрегация: 3 прогона на каждой комбинации ----------
+# ---------- агрегация: 3 прогона ----------
 print("\n=== Агрегация ===")
 agg_results = {}
 for fmt, codec in BENCH:
