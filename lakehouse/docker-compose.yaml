@@ -103,6 +103,20 @@ services:
       - ./catalog:/etc/trino/catalog
     restart: unless-stopped
 
+  spark:
+    image: apache/spark:3.5.1-python3
+    container_name: spark
+    user: root
+    entrypoint: ["sleep", "infinity"]
+    depends_on:
+      - lakekeeper
+    volumes:
+      - ./spark_jobs:/jobs
+    environment:
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+
 volumes:
   minio-data:
   pg-data:
